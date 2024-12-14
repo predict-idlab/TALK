@@ -4,7 +4,7 @@ import re
 from glob import glob
 import datetime
 import numpy as np
-from mapper import map_value, generate_event_uuid, generate_obs_uuid
+from typing import Tuple
 from tqdm import tqdm
 
 ##################
@@ -54,6 +54,22 @@ def generate_wearable_uuid(wearable, part):
     result = uuid_wearable_map[part][wearable]
     uuid_wearable_map[part][wearable] += 1
     return 'https://dahcc.idlab.ugent.be/Protego/'+part+'/'+wearable+'/state'+str(result)
+
+uuid_event_map = {}
+def generate_event_uuid(part :str)-> Tuple[str, str]:
+    if part not in uuid_event_map:
+        uuid_event_map[part] = 0
+    result = uuid_event_map[part]
+    uuid_event_map[part] += 1
+    return 'https://dahcc.idlab.ugent.be/Protego/'+part+'/state'+str(uuid_event_map[part]), 'https://dahcc.idlab.ugent.be/Protego/'+part+'/state'+str(result)
+
+uuid_obs_map = {}
+def generate_obs_uuid(part:str) -> str:
+    if part not in uuid_obs_map:
+        uuid_obs_map[part] = 0
+    result = uuid_obs_map[part]
+    uuid_obs_map[part] += 1
+    return 'https://dahcc.idlab.ugent.be/Protego/'+part+'/state'+str(result)
 
 aqura_conv = {'Badkamer zorgkamer':  'careroom',
 'Zorgkamer': 'careroom',
@@ -189,7 +205,7 @@ def map_value(value, metric_id):
 
 def create_event(ff, part, time, begin_event, preds):
     ff = ff[ff.Sensor != "velbus.B8.EnergyMeter3"]
-    ff['Metric'] = ff['Metric'].replace(['org.dyamand.aqura.AquraLocationState_Protego User'],'org.dyamand.aqura.AquraLocationState_Protego_User')
+    ff = ff.replace({'Metric':{'org.dyamand.aqura.AquraLocationState_Protego User':'org.dyamand.aqura.AquraLocationState_Protego_User'}})
     activities = set()
     for sublist in ff.label.values:
         for item in sublist:
@@ -418,7 +434,7 @@ for user in tqdm(glob('/Users/bramsteenwinckel/Datasets/Protego_anom/*/')):
     gr_df = df.groupby(['Sensor', 'Metric']).resample("30s")['Value'].apply(combine).ffill().reset_index()
     gr_df = gr_df[gr_df["Metric"].str.contains("mqtt") == False]
 
-    gr_df = gr_df.set_index('Timestamp')
+    gr_df = gr_df.set_index('Timestamp').sort_index()
     gr_df['label'] = [set() for i in range(len(gr_df))]
     gr_df['routine'] = [set() for i in range(len(gr_df))]
     for i, row in lf.iterrows():
@@ -426,7 +442,7 @@ for user in tqdm(glob('/Users/bramsteenwinckel/Datasets/Protego_anom/*/')):
         gr_df.loc[str(row.start_time):str(row.end_time), 'routine'].apply(lambda x: x.add(row.ontology_routine))
 
     gr_df.label = gr_df.label.apply(lambda x: x if len(x) > 0 else ['Unknown'])
-    gr_df.ontology_routine = gr_df.routine.apply(lambda x: x if len(x) > 0 else ['Unknown'])
+    gr_df['ontology_routine'] = gr_df.routine.apply(lambda x: x if len(x) > 0 else ['Unknown'])
     gr_df = gr_df.dropna()
 
     gr_df = gr_df.sort_index()
